@@ -1,0 +1,173 @@
+---
+title: "HW2"
+output: 
+  pdf_document: 
+    keep_tex: yes
+    latex_engine: xelatex
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Question 1
+1.	Create a new column “Enrollment group” in the table Phonecall
+a)	Insert EnrollmentGroup=Clinical Alert :code is 125060000
+b)	Insert EnrollmentGroup =Health Coaching :code is 125060001
+c)	Insert EnrollmentGroup =Technixal Question: Code is 125060002
+d)	Insert EnrollmentGroup =Administrative: Code  is 125060003
+e)	Insert EnrollmentGroup =Other: Code  is 125060004
+f)	Insert EnrollmentGroup =Lack of engagement : Code  is 125060005
+
+``` {r q1}
+library("RODBC")
+library(tidyverse)
+
+myconn<-odbcConnect("qbs181","aivanov","aivanov@qbs181")
+phonecall<-sqlQuery(myconn,"select * from PhoneCall_Encounter")
+library("dplyr")
+
+
+
+phonecall <- mutate( phonecall, 'Enrollment group' = ifelse(EncounterCode == '125060000', 'Clinical Alert',
+                ifelse(EncounterCode == '125060001', 'Health Coaching',
+                 ifelse(EncounterCode == '125060002', 'Technical Question',
+                        ifelse(EncounterCode == '125060003', 'Administrative',
+                               ifelse(EncounterCode == '125060004', 'Other',
+                                      ifelse(EncounterCode == '125060005', 'Lack of engagement',EncounterCode)))))))
+
+sample_n(phonecall, 10)
+```
+
+# Question 2 
+
+2.	Obtain the # of records for each enrollment group
+              
+``` {r q2}
+#table(phonecall$`Enrollment group`)
+
+phonecall %>%
+  group_by(`Enrollment group`) %>%
+  summarize("number of records" = n())
+
+```
+
+# Question 3
+
+3.	Merge the Phone call encounter table with Call duration table.
+
+``` {r q3}
+merge_phone <-sqlQuery(myconn,"select A.*, B.* from PhoneCall_Encounter A
+inner Join
+PhoneCall B
+on
+A.CustomerId= B.tri_CustomerIDEntityReference")
+
+head(merge_phone)
+
+#JOINING IN R; SLIGHT DIFFERENCE OF 4; I USED the SQL INNER JOIN
+#phonecall2 <-sqlQuery(myconn,"select * from PhoneCall")
+#p12 <- merge(phonecall, phonecall2, by.x=c('CustomerId'),
+#    by.y=c('tri_CustomerIDEntityReference'))
+
+merge_phone <- mutate(merge_phone, 'Enrollment group' = ifelse(EncounterCode == '125060000', 'Clinical Alert',
+                ifelse(EncounterCode == '125060001', 'Health Coaching',
+                 ifelse(EncounterCode == '125060002', 'Technical Question',
+                        ifelse(EncounterCode == '125060003', 'Administrative',
+                               ifelse(EncounterCode == '125060004', 'Other',
+                                      ifelse(EncounterCode == '125060005', 'Lack of engagement',EncounterCode)))))))
+
+sample_n(merge_phone, 10)
+
+```
+
+# Question 4
+
+4.	Find out the # of records for different call outcomes and call type. Use 1-Inbound and 2-Outbound, for call types; use 1-No response,2-Left voice mail and 3 successful. Please also find the call duration for each of the enrollment groups 
+
+
+``` {r q4}
+#table(merge_phone$CallType)
+#table(merge_phone$CallOutcome)
+
+
+merge_phone %>%
+  group_by(`CallType`) %>%
+  summarize("number of records" = n())
+
+merge_phone %>%
+  group_by(`CallOutcome`) %>%
+  summarize("number of records" = n())
+
+merge_phone %>%
+  group_by(`Enrollment group`) %>%
+  summarize(sum_call = sum(CallDuration), mean_call = mean(CallDuration))
+```
+
+
+
+
+# Question 5
+
+5.	Merge the tables Demographics, Conditions and TextMessages. Find the # of texts/per week, by the type of sender. Draw a visual using ggplot to obtain # of texts and color it by the type of sender
+
+
+``` {r q5}
+library(lubridate)
+
+dem_con_text <-sqlQuery(myconn,"Select A.*, B.*, C.* from Demographics A
+Inner Join
+Conditions B
+on
+A.contactid = B.tri_patientid
+inner join
+TextMessages C
+on
+A.contactid = C.tri_contactid")
+
+
+
+head(dem_con_text)
+
+dem_con_text$TextSentDate <- as.Date(dem_con_text$TextSentDate, format="%m/%d/%y")
+
+sample_n(dem_con_text,10)
+#finding weeks using lubridate
+
+
+q5 <- dem_con_text %>% 
+  group_by(SenderName, week = floor_date(TextSentDate, unit = "week")) %>% 
+  summarize("Number of Texts" = n())
+
+
+
+
+#finding weeks using cut, keeps start of week.
+#q5 <- dem_con_text %>% 
+#  group_by(SenderName, week = cut(TextSentDate, "week"))%>%
+#  summarize("number of texts" = n())
+  
+
+ggplot(q5, aes(fill=SenderName, y=`Number of Texts`, x=week)) +
+  geom_bar(position="stack", stat="identity") +
+  labs(title = "Sender Name Vs. Number of Texts per week")+
+   theme(plot.title = element_text(hjust = 0.5))
+
+```
+
+
+# Question 6
+
+6.	Obtain the count of texts based on the chronic condition over a period of time (say per week). Draw a visual using ggplot to obtain the counts
+``` {r q6}
+
+q6 <- dem_con_text %>% 
+  group_by("Chronic Condition" = tri_name, week = floor_date(TextSentDate,"week")) %>% 
+  summarize("Number of Texts" =n())
+
+ggplot(q6, aes(fill=`Chronic Condition`, y=`Number of Texts`, x=week)) +
+  geom_bar(position="stack", stat="identity") +
+  labs(title = "Sender Name Vs. Number of Texts per Week") +
+  theme(plot.title = element_text(hjust = 0.5))
+
+```
